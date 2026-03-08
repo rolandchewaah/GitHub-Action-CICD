@@ -1,0 +1,27 @@
+resources:
+  jobs:
+    ingestion_job:
+      name: "ingestion-job-${bundle.target}"
+
+      tasks:
+        - task_key: ingest_raw
+          job_cluster_key: ingestion_cluster
+          spark_python_task:
+            python_file: ../src/ingest_data.py
+            parameters:
+              - "--input-path"
+              - "dbfs:/FileStore/ingestion/input/"
+              - "--schema-location"
+              - "dbfs:/FileStore/ingestion/schema/"
+              - "--checkpoint-location"
+              - "dbfs:/FileStore/ingestion/checkpoint/"
+              - "--target-table"
+              - "main.default.raw_ingested_data"
+
+      job_clusters:
+        - job_cluster_key: ingestion_cluster
+          new_cluster:
+            spark_version: 14.3.x-scala2.12
+            node_type_id: Standard_D4as_v5
+            num_workers: 1
+            autotermination_minutes: 30

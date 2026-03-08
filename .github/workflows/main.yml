@@ -1,0 +1,150 @@
+name: main
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - ".github/**"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    name: Test (pytest + coverage)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest pytest-cov
+
+      - name: Run tests with coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          pytest -q --disable-warnings --maxfail=1 \
+            --cov=src --cov-report=term-missing --cov-report=xml \
+            --cov-fail-under=80
+
+      - name: Upload coverage report (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  azure-oidc-login:
+    name: Azure CLI Login (OIDC)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Azure CLI Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Azure CLI script
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az account show
+
+  deploy-dev:
+    name: Deploy Dev
+    runs-on: ubuntu-latest
+    environment: development
+    needs: [test, azure-oidc-login]
+
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_DEV }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_DEV }}
+      REPO_PATH: /Workspace/Users/${{ secrets.DATABRICKS_USER }}/Databricks-Analytics-Pipeline
+      GIT_REPO_URL: https://github.com/${{ github.repository }}.git
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Databricks CLI
+        uses: databricks/setup-cli@v0.205.0 # Pin to a stable release
+
+      - name: Create or Update Databricks Repo (Dev)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="${{ github.ref_name }}"
+
+          echo "REPO_PATH: ${REPO_PATH}"
+          echo "GIT_REPO_URL: ${GIT_REPO_URL}"
+          echo "BRANCH: ${BRANCH_NAME}"
+
+          if databricks repos get "${REPO_PATH}" > /dev/null 2>&1; then
+            databricks repos update "${REPO_PATH}" --branch "${BRANCH_NAME}"
+          else
+            databricks repos create --url "${GIT_REPO_URL}" --provider github --path "${REPO_PATH}"
+            databricks repos update "${REPO_PATH}" --branch "${BRANCH_NAME}"
+          fi
+
+  deploy-prod:
+    name: Deploy Prod
+    runs-on: ubuntu-latest
+    environment: production
+    needs: deploy-dev
+
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
+      REPO_PATH: /Workspace/Users/${{ secrets.DATABRICKS_USER }}/Databricks-Analytics-Pipeline
+      GIT_REPO_URL: https://github.com/${{ github.repository }}.git
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Databricks CLI
+        uses: databricks/setup-cli@v0.205.0 # Pin to a stable release
+
+      - name: Create or Update Databricks Repo (Prod)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="${{ github.ref_name }}"
+
+          echo "REPO_PATH: ${REPO_PATH}"
+          echo "GIT_REPO_URL: ${GIT_REPO_URL}"
+          echo "BRANCH: ${BRANCH_NAME}"
+
+          if databricks repos get "${REPO_PATH}" > /dev/null 2>&1; then
+            databricks repos update "${REPO_PATH}" --branch "${BRANCH_NAME}"
+          else
+            databricks repos create --url "${GIT_REPO_URL}" --provider github --path "${REPO_PATH}"
+            databricks repos update "${REPO_PATH}" --branch "${BRANCH_NAME}"
+          fi

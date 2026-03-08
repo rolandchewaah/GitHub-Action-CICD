@@ -122,7 +122,7 @@ jobs:
     env:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
-      REPO_PATH: /Workspace/Users/${{ secrets.DATABRICKS_USER }}/Databricks-Analytics-Pipeline
+      REPO_PATH: /Workspace/Users/${{ secrets.DATABRICKS_USER }}/GitHub-Action-CICD
       GIT_REPO_URL: https://github.com/${{ github.repository }}.git
 
     steps:

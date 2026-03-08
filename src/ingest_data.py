@@ -32,13 +32,13 @@ def start_write(df, cfg: dict):
           .toTable(cfg["target_table"])
     )
 
-# def main(spark_session_cls=None) -> None:
-#     if spark_session_cls is None:
-#         from pyspark.sql import SparkSession
-#         spark_session_cls = SparkSession
+def main(spark_session_cls=None) -> None:
+    if spark_session_cls is None:
+        from pyspark.sql import SparkSession
+        spark_session_cls = SparkSession
 
-#     cfg = load_config()
-#     spark = spark_session_cls.builder.appName("IngestionJob").getOrCreate()
-#     df = build_stream(spark, cfg)
-#     query = start_write(df, cfg)
-#     query.awaitTermination()
+    cfg = load_config()
+    spark = spark_session_cls.builder.appName("IngestionJob").getOrCreate()
+    df = build_stream(spark, cfg)
+    query = start_write(df, cfg)
+    query.awaitTermination()
